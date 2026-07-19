@@ -6,6 +6,9 @@
 #   Line 2: seven_day utilization (integer %)
 #   Line 3: five_hour resets_at (ISO 8601)
 #   Line 4: seven_day resets_at (ISO 8601)
+#   Line 5: model-scoped weekly utilization (integer %, empty if none)
+#   Line 6: model-scoped weekly resets_at (ISO 8601, empty if none)
+#   Line 7: model-scoped label, lowercased (e.g. "fable", empty if none)
 #
 # Designed to run in background via Claude Code hooks.
 
@@ -73,8 +76,19 @@ seven_d_raw=$(printf '%s' "$usage_json" | jq -r '.seven_day.utilization // empty
 five_h_reset=$(printf '%s' "$usage_json" | jq -r '.five_hour.resets_at // ""' 2>/dev/null)
 seven_d_reset=$(printf '%s' "$usage_json" | jq -r '.seven_day.resets_at // ""' 2>/dev/null)
 
+# Model-scoped weekly limit (e.g. Fable) from the limits[] array
+scoped_filter='[.limits[]? | select(.kind == "weekly_scoped" and .scope.model.display_name != null)][0]'
+scoped_pct_raw=$(printf '%s' "$usage_json" | jq -r "$scoped_filter.percent // empty" 2>/dev/null)
+scoped_reset=$(printf '%s' "$usage_json" | jq -r "$scoped_filter.resets_at // \"\"" 2>/dev/null)
+scoped_label=$(printf '%s' "$usage_json" | jq -r "$scoped_filter.scope.model.display_name // \"\"" 2>/dev/null \
+  | tr '[:upper:]' '[:lower:]')
+scoped_pct=""
+[ -n "$scoped_pct_raw" ] && scoped_pct=$(printf "%.0f" "$scoped_pct_raw")
+
 if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
   five_h=$(printf "%.0f" "$five_h_raw")
   seven_d=$(printf "%.0f" "$seven_d_raw")
-  printf '%s\n%s\n%s\n%s\n' "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" > "$CACHE_FILE"
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" \
+    "$scoped_pct" "$scoped_reset" "$scoped_label" > "$CACHE_FILE"
 fi
