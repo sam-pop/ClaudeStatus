@@ -2,17 +2,17 @@
 # Fetches Claude Code usage stats from the Anthropic API and caches them.
 #
 # Cache format (/tmp/.claude_usage_cache):
-#   Line 1: five_hour utilization (integer %)
-#   Line 2: seven_day utilization (integer %)
-#   Line 3: five_hour resets_at (ISO 8601)
-#   Line 4: seven_day resets_at (ISO 8601)
+#   Line 1: five_hour utilization (integer %, empty if the plan has no 5h window)
+#   Line 2: seven_day utilization (integer %, empty if none)
+#   Line 3: five_hour resets_at (ISO 8601, empty if none)
+#   Line 4: seven_day resets_at (ISO 8601, empty if none)
 #   Line 5: model-scoped weekly utilization (integer %, empty if none)
 #   Line 6: model-scoped weekly resets_at (ISO 8601, empty if none)
 #   Line 7: model-scoped label, lowercased (e.g. "fable", empty if none)
 #
 # Designed to run in background via Claude Code hooks.
 
-CACHE_FILE="/tmp/.claude_usage_cache"
+CACHE_FILE="${CLAUDE_USAGE_CACHE:-/tmp/.claude_usage_cache}"
 
 # ---------------------------------------------------------------------------
 # Platform detection
@@ -31,6 +31,10 @@ if [ -f "$CACHE_FILE" ]; then
   [ "$cache_age" -lt 60 ] && exit 0
 fi
 
+# CLAUDE_USAGE_JSON injects a response and skips credentials + network (tests)
+usage_json="$CLAUDE_USAGE_JSON"
+
+if [ -z "$usage_json" ]; then
 # ---------------------------------------------------------------------------
 # Extract OAuth token
 # ---------------------------------------------------------------------------
@@ -66,6 +70,7 @@ usage_json=$(curl -s -m 10 \
   -H "authorization: Bearer $token" \
   -H "user-agent: claude-code" \
   "https://api.anthropic.com/oauth/usage" 2>/dev/null)
+fi
 
 if [ -z "$usage_json" ]; then
   exit 0
@@ -85,9 +90,14 @@ scoped_label=$(printf '%s' "$usage_json" | jq -r "$scoped_filter.scope.model.dis
 scoped_pct=""
 [ -n "$scoped_pct_raw" ] && scoped_pct=$(printf "%.0f" "$scoped_pct_raw")
 
-if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
-  five_h=$(printf "%.0f" "$five_h_raw")
-  seven_d=$(printf "%.0f" "$seven_d_raw")
+# Each window is optional: some plans have no 5-hour window (five_hour: null).
+# Write the cache if any meter is present; otherwise keep the last good cache.
+five_h=""
+seven_d=""
+[ -n "$five_h_raw" ] && five_h=$(printf "%.0f" "$five_h_raw")
+[ -n "$seven_d_raw" ] && seven_d=$(printf "%.0f" "$seven_d_raw")
+
+if [ -n "$five_h" ] || [ -n "$seven_d" ] || [ -n "$scoped_pct" ]; then
   printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" \
     "$scoped_pct" "$scoped_reset" "$scoped_label" > "$CACHE_FILE"

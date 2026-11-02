@@ -15,7 +15,7 @@ ctx |||····· 48% 192k/400k · 5h ▰▱▱▱▱▱▱▱ 8% ↻ 4h 12m · 
 | **Directory** | `~/…/parent/folder` — tilde-relative with smart truncation |
 | **Git branch** | Current branch + `*` dirty indicator for uncommitted changes |
 | **Context** | Pipe-style progress bar + percentage + token count (e.g. `192k/400k`) |
-| **5h usage** | Rate-limit utilization with reset countdown |
+| **5h usage** | Rate-limit utilization with reset countdown — shown only when your plan has a 5-hour window |
 | **7d usage** | Weekly rate-limit utilization with reset countdown |
 | **Model usage** | Model-scoped weekly limit (e.g. Fable) with reset countdown — shown only when your plan has one |
 
@@ -52,6 +52,14 @@ Then restart Claude Code.
 4. Backs up your existing settings to `settings.json.bak`
 5. Primes the usage cache
 
+## Test
+
+```sh
+sh tests/fetch-usage.test.sh
+```
+
+Offline: injects API responses via `CLAUDE_USAGE_JSON` and redirects the cache via `CLAUDE_USAGE_CACHE`, so no credentials or network are used.
+
 ## Uninstall
 
 ```sh
@@ -64,7 +72,7 @@ Removes scripts, cleans settings, and deletes the cache. Your other Claude Code 
 
 **Status line** (`statusline.sh`): Receives JSON from Claude Code via stdin on every prompt. Extracts model, directory, context window data in a single `jq` pass. Renders two lines with ANSI color codes.
 
-**Usage fetcher** (`fetch-usage.sh`): Runs in the background via Claude Code hooks (on every tool use and on stop). Calls the Anthropic API to get 5-hour and 7-day rate-limit utilization, plus any model-scoped weekly limit (e.g. Fable) reported in the account's `limits` array. Results are cached to `/tmp/.claude_usage_cache` with a 60-second throttle to avoid excessive API calls.
+**Usage fetcher** (`fetch-usage.sh`): Runs in the background via Claude Code hooks (on every tool use and on stop). Calls the Anthropic API to get 5-hour (if your plan has one) and 7-day rate-limit utilization, plus any model-scoped weekly limit (e.g. Fable) reported in the account's `limits` array. Results are cached to `/tmp/.claude_usage_cache` with a 60-second throttle to avoid excessive API calls. Each meter is optional; the cache is updated whenever at least one is present.
 
 ### Architecture
 
